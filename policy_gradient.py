@@ -8,11 +8,12 @@ class Value:
     def __init__(self, env,scope):
         self.scope = scope
         self.env = env
+        self.action_space = self.env.action_space.shape[0]
         self.obs_space = self.env.observation_space.shape[0]
         with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
             self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
             self.obs = tf.placeholder(tf.float32, shape=[None,self.obs_space], name="observation")
-            self.action = tf.placeholder(tf.float32, shape=[None,1], name="action")
+            self.action = tf.placeholder(tf.float32, shape=[None,self.action_space], name="action")
             self.target = tf.placeholder(tf.float32, shape=[None,1], name="target_value")
             self.value = self.value_model(self.obs, self.action)
             self.loss = tf.reduce_mean(tf.pow((self.value_model(self.obs,self.action) - self.target),2))
@@ -42,7 +43,7 @@ class Value:
     def get_q_gradient(self,action,obs):
         with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
             obs = obs.reshape(-1, self.obs_space)
-            action = action.reshape(-1, 1)
+            action = action.reshape(-1, self.action_space)
             sess = tf.get_default_session()
             grad = tf.gradients(self.value,self.action)
             return sess.run([grad],feed_dict={self.action:action,self.obs:obs})
@@ -66,7 +67,7 @@ class Policy:
         self.scope = scope
         with tf.variable_scope(scope, reuse = tf.AUTO_REUSE):
             self.env = env
-            self.action_space = 1
+            self.action_space = self.env.action_space.shape[0]
             self.obs_space = self.env.observation_space.shape[0]
             self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
             self.obs = tf.placeholder(tf.float32, shape=[None, self.obs_space], name="observation")
@@ -87,7 +88,8 @@ class Policy:
             # target = tf.placeholder(tf.float32,shape=[1],name="target_action")
             dense1 = tf.layers.dense(inputs=obs, units=hidden, activation=tf.nn.relu)
             dense2 = tf.layers.dense(inputs=dense1, units=hidden, activation=tf.nn.relu)
-            action = tf.layers.dense(inputs=dense2, units=1,activation=tf.nn.sigmoid)
+            action = tf.layers.dense(inputs=dense2, units=1,activation=tf.nn.tanh)
+            action = tf.clip_by_value(action,self.env.action_space.low,self.env.action_space.high)
             return action
 
     def predict(self, obs):
@@ -133,7 +135,7 @@ batch_size = 128
 max_time_steps = 200
 episode_reward = 0
 reward_history = []
-env = gym.make('CartPole-v0')
+env = gym.make('MountainCarContinuous-v0')
 obs_old = env.reset()
 memory = Memory(limit=int(1e6), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
 agent_policy = Policy(env,"policy")
@@ -141,7 +143,7 @@ agent_critic = Value(env,"value")
 agent_policy_t = Policy(env,"policy_t")
 agent_critic_t = Value(env,"value_t")
 #initial rollouts to gather date
-for i in range(100):
+for i in range(10000):
     action = env.action_space.sample()
     obs, rew, done, _ = env.step(action)
     episode_reward += rew
@@ -171,13 +173,14 @@ with tf.Session() as sess:
         done = 0
         while not done and t < max_time_steps:
             action = agent_policy.predict(obs_old) #+ agent_policy.noise(0,0.1)
-            if action>0.5:
-                action = 1
-            else:
-                action = -0
+            action = action.reshape(-1)
+            # if action>0.5:
+            #     action = 1
+            # else:
+            #     action = -0
             # action = env.action_space.sample()
             obs, rew, done, info = env.step(action)
-            env.render()
+            # env.render()
             episode_reward += rew
             memory.append(obs_old, action, rew, obs, done)
             if done or t == max_time_steps-1:
