@@ -200,7 +200,7 @@ with tf.Session() as sess:
             agent_policy.optimize_policy(q_grad,obs_batch)
             agent_critic_t.set_trainable_parameters(agent_critic.get_trainable_parameters(), 0.001)
             agent_policy_t.set_trainable_parameters(agent_policy.get_trainable_parameters(), 0.001)
-        # print(episode_reward)
+        print(episode_reward)
         summary = sess.run(merged)
         train_writer.add_summary(summary, i)
         time = 200
